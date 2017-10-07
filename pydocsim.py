@@ -1,9 +1,10 @@
 
 
-import numpy as np
 import re
 
 import ijson
+import json
+from json import JSONDecodeError
 
 '''
 Using ijson to parse large json files:
@@ -21,13 +22,45 @@ class Reader(object):
 		self.records_gen = ijson.items(self.file_handle, 'item')
 
 
-	def get_next_metadata_record(self):
-
-		'''
-		returns tuple of 
-		'''
+	def get_next_dpla_record(self):
 
 		return DPLARecord(next(self.records_gen))
+
+
+	def dpla_record_generator(self):
+
+		while True:
+			yield self.get_next_dpla_record()
+
+
+
+class ReaderRaw(object):
+
+
+	def __init__(self, input_file):
+
+		self.input_file = input_file
+		self.file_handle = open(self.input_file,'rb')
+
+		# bump file handle
+		next(self.file_handle)
+		self.records_gen = self.file_handle
+
+
+	def get_next_dpla_record(self):
+
+		r_string = next(self.file_handle).decode('utf-8').lstrip(',')
+		return DPLARecord(r_string)
+
+
+	def dpla_record_generator(self):
+
+		while True:
+			try:
+				yield self.get_next_dpla_record()
+			except JSONDecodeError:
+				break
+
 
 
 class DPLARecord(object):
@@ -93,10 +126,6 @@ class DPLARecord(object):
 
 		return set(self.parse_m_values())
 		
-
-
-
-
 
 class RecordCompare(object):
 
