@@ -6,17 +6,19 @@ import time
 from pydocsim import *
 
 # DEBUG AUTO LOAD
-reader = Reader('../data/michigan.json')
+reader = Reader('data/michigan.json')
 r1 = reader.get_next_dpla_record()
 r2 = reader.get_next_dpla_record()
 r3 = reader.get_next_dpla_record()
 r4 = reader.get_next_dpla_record()
 
+
 def get_new_reader():
-	return Reader('../data/michigan.json')
+	return Reader('data/michigan.json')
+
 
 def get_new_raw_reader():
-	return ReaderRaw('../data/michigan.json')
+	return ReaderRaw('data/michigan.json')
 
 
 def benchmark_raw_read():
