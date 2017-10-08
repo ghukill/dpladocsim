@@ -171,6 +171,19 @@ class DocSimModel(object):
 
 	'''
 	DocSimModel instance 
+
+	Eventually, will want to calculate similarity of a newly introduced row
+
+	See:
+		https://en.wikipedia.org/wiki/Distance_matrix
+		http://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.cosine_similarity.html
+		https://stackoverflow.com/questions/37003272/how-to-compute-jaccard-similarity-from-a-pandas-dataframe
+		
+		Particularly this:
+			https://www.tensorflow.org/tutorials/wide
+
+		Or, perhaps much simpler, would be euclidean distances:
+			https://stackoverflow.com/a/39205919/1196358
 	'''
 
 	def __init__(self):
