@@ -5,6 +5,7 @@ import json
 from json import JSONDecodeError
 import pandas as pd
 import re
+from scipy.spatial.distance import pdist
 
 '''
 Using ijson to parse large json files:
@@ -199,6 +200,48 @@ class DocSimModel(object):
 	def add_record(self, record_char_vect_series):
 
 		self.df = self.df.append(record_char_vect_series)
+
+
+	def train_model_from_reader(self, reader):
+
+		for r in reader.dpla_record_generator():
+			self.add_record(r.m_as_char_vect_series())
+
+
+	def save_model(self, path):
+
+		'''
+		save model(df) to disk
+		'''
+
+		self.df.to_pickle(path)
+
+
+	def load_model(self, path):
+
+		'''
+		load model from disk
+		'''
+
+		self.df = pd.read_pickle(path)
+
+
+	def get_similar_records(self, input_record):
+
+		'''
+		Inefficient, but functional comparison of input record to model
+		'''
+
+		scores = []
+
+		# loop through model
+		for row in self.df.iterrows():
+			scores.append((row[0], pdist([row[1], input_record], metric='euclidean')[0]))
+
+		# sort and return top ten
+		scores.sort(key=lambda tup: tup[1])
+
+		return scores[:10]
 
 
 
