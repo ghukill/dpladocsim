@@ -1,6 +1,10 @@
 # dpladocsim
 Compare two JSON records from DPLA 
 
+# download DPLA datasets
+
+For examples to run, download [Michigan data](https://dpla-provider-export.s3.amazonaws.com/2017/10/michigan.json.gz) from DPLA and unzip to `/data` directory.
+
 # example of poor, but working model
 
 ```

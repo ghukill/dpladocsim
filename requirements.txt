@@ -1,0 +1,5 @@
+cffi==1.11.1
+ijson==2.3
+ipython==6.2.1
+pandas==0.20.3
+scipy==0.19.1
