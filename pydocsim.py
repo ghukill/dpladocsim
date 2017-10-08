@@ -204,8 +204,10 @@ class DocSimModel(object):
 
 	def train_model_from_reader(self, reader):
 
-		for r in reader.dpla_record_generator():
+		for i,r in enumerate(reader.dpla_record_generator()):
 			self.add_record(r.m_as_char_vect_series())
+			if i % 1000 == 0:
+				print('loaded %s records' % i)
 
 
 	def save_model(self, path):
