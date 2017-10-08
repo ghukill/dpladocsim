@@ -1,10 +1,10 @@
 
 
-import re
-
 import ijson
 import json
 from json import JSONDecodeError
+import pandas as pd
+import re
 
 '''
 Using ijson to parse large json files:
@@ -79,10 +79,15 @@ class DPLARecord(object):
 
 		# capture convenience values
 		self.pre_hash_dpla_id = self.record['_id']
-		self.dpla_id = self.record['_source']['_id']
+		self.dpla_id = self.record['_source']['id']
 		self.dpla_url = self.record['_source']['@id']
 		self.original_metadata = self.record['_source']['originalRecord']['metadata']
 		self.metadata_string = str(self.original_metadata)
+		self.char_counts = None
+
+		# alphnumeric characters used to calc vectors
+		self.alnum = list('0123456789abcdefghijklmnopqrstuvwxyz')
+
 
 
 	def parse_m_values(self):
@@ -125,6 +130,23 @@ class DPLARecord(object):
 		'''
 
 		return set(self.parse_m_values())
+
+
+	def m_as_char_vect_series(self):
+
+		'''
+		parse and count a-z,0-9, return as pandas series
+		'''
+
+		# grab characteres, stripping whitespace
+		chars = ''.join(self.parse_m_values()).replace(' ','')
+		
+		# count
+		char_counts = [ chars.count(char) for char in self.alnum ]
+
+		# return as pandas series
+		return pd.Series(char_counts, name=self.dpla_id, index=self.alnum)
+
 		
 
 class RecordCompare(object):
@@ -139,3 +161,28 @@ class RecordCompare(object):
 		r2_s = r2.m_as_set()
 		overlap = r1_s & r2_s
 		return float(len(overlap)) / float(sum([len(r1_s),len(r2_s)]) / 2)
+
+
+
+class DocSimModel(object):
+
+	'''
+	DocSimModel instance 
+	'''
+
+	def __init__(self):
+
+		# alphanumeric 
+		# TODO: consider storing this somewhere more global
+		self.alnum = list('0123456789abcdefghijklmnopqrstuvwxyz')
+
+		# init empty dataframe
+		self.df = pd.DataFrame(None, columns=self.alnum)
+
+
+	def add_record(self, record_char_vect_series):
+
+		self.df = self.df.append(record_char_vect_series)
+
+
+
