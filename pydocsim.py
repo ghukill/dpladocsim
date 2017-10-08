@@ -119,7 +119,10 @@ class DPLARecord(object):
 					else:
 						yield v
 
-		return list(NestedDictValues(self.original_metadata))
+		vals = list(NestedDictValues(self.original_metadata))
+
+		# remove empty vals
+		return list(filter(None, vals))
 
 
 
