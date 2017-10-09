@@ -1,11 +1,12 @@
 
-
+from collections import OrderedDict
 import ijson
 import json
 from json import JSONDecodeError
 import pandas as pd
 import re
 from scipy.spatial.distance import pdist
+import xmltodict
 
 '''
 Using ijson to parse large json files:
@@ -73,7 +74,7 @@ class DPLARecord(object):
 		expecting dictionary or json of record
 		'''
 
-		if type(record) == dict:
+		if type(record) in [dict, OrderedDict]:
 			self.record = record
 		elif type(record) == str:
 			self.record = json.loads(record)
@@ -152,6 +153,71 @@ class DPLARecord(object):
 		return pd.Series(char_counts, name=self.dpla_id, index=self.alnum)
 
 		
+
+class RawRecord(object):
+
+	'''
+	Class to accomodate raw metadata
+	'''
+
+	def __init__(self, record_id, m_xml_string):
+
+		# save id
+		self.record_id = record_id
+
+		# save metadata string
+		self.m_xml_string = m_xml_string
+		# convert to dictionary with xmltodict
+		self.original_metadata = xmltodict.parse(self.m_xml_string)
+
+		# alphnumeric characters used to calc vectors
+		self.alnum = list('0123456789abcdefghijklmnopqrstuvwxyz')
+
+
+	def parse_m_values(self):
+
+		def NestedDictValues(i):
+
+			if isinstance(i, dict):
+				for v in i.values():
+					if isinstance(v, dict):
+						yield from NestedDictValues(v)
+					elif isinstance(v, list):
+						yield from NestedDictValues(v)
+					else:
+						yield v
+					
+			elif isinstance(i, list):
+				for v in i:
+					if isinstance(v, dict):
+						yield from NestedDictValues(v)
+					elif isinstance(v, list):
+						yield from NestedDictValues(v)
+					else:
+						yield v
+
+		vals = list(NestedDictValues(self.original_metadata))
+
+		# remove empty vals
+		return list(filter(None, vals))
+
+
+	def m_as_char_vect_series(self):
+
+		'''
+		parse and count a-z,0-9, return as pandas series
+		'''
+
+		# grab characteres, stripping whitespace
+		chars = ''.join(self.parse_m_values()).replace(' ','')
+		
+		# count
+		char_counts = [ chars.count(char) for char in self.alnum ]
+
+		# return as pandas series
+		return pd.Series(char_counts, name=self.record_id, index=self.alnum)
+
+
 
 class RecordCompare(object):
 
@@ -243,7 +309,7 @@ class DocSimModel(object):
 		# sort and return top ten
 		scores.sort(key=lambda tup: tup[1])
 
-		return scores[:10]
+		return scores[:20]
 
 
 
