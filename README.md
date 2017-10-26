@@ -112,5 +112,38 @@ Best guess at 47.275:
 
 Not quite.  Work to be done.
 
+# LDA
 
+```
+from pydocsim import *
+dsm = DocSimModelLDA(name='mich')
+dsm.load_corpora()
+dsm.load_lda()
+dsm.load_similarity_index()
+rr = ReaderRaw('data/michigan.json')
+r = rr.get_next_dpla_record()
+
+In [9]: dsm.get_similar_records(r)
+Out[9]: 
+[(0, 0.99999994),
+ (17, 0.87552118),
+ (18, 0.87552118),
+ (33, 0.87552118),
+ (16, 0.85225111),
+ (5, 0.84634936),
+ (15, 0.84494537),
+ (28, 0.84336436),
+ (12, 0.8423329),
+ (19, 0.83408332),
+ (41, 0.83208382),
+ (30, 0.83183944),
+ (44, 0.82675105),
+ (46, 0.82443923),
+ (38, 0.82100642),
+ (13, 0.81981587),
+ (11, 0.81447327),
+ (39, 0.81388229),
+ (37, 0.8057099),
+ (36, 0.80004919)]
+```
 

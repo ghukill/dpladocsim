@@ -3,15 +3,19 @@ from collections import OrderedDict
 import ijson
 import json
 from json import JSONDecodeError
+import os
 import pandas as pd
 import re
 from scipy.spatial.distance import pdist
 import xmltodict
 
-'''
-Using ijson to parse large json files:
-https://pypi.python.org/pypi/ijson
-'''
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+from nltk.corpus import stopwords
+
+import gensim
+from gensim import corpora, models, similarities
 
 
 class Reader(object):
@@ -90,6 +94,10 @@ class DPLARecord(object):
 		# alphnumeric characters used to calc vectors
 		self.alnum = list('0123456789abcdefghijklmnopqrstuvwxyz')
 
+		## LDA
+		# nltk stopwords
+		self.stoplist = set(stopwords.words('english'))
+		self.tokens = self.m_as_bow()
 
 
 	def parse_m_values(self):
@@ -152,6 +160,29 @@ class DPLARecord(object):
 		# return as pandas series
 		return pd.Series(char_counts, name=self.dpla_id, index=self.alnum)
 
+
+	def m_as_bow(self):
+		
+		'''
+		get metadata as bag-of-words (bow)
+		'''
+
+		values = self.parse_m_values()
+		words = " ".join(values)
+
+		# save as tokens
+		self.tokens = [word for word in words.lower().split() if word not in self.stoplist]
+		return self.tokens
+
+
+	def as_vec_bow(self, m):
+		'''
+		pass model (m) to doc, affix .doc_bow, using self.tokens
+		'''
+		self.vec_bow = m.id2word.doc2bow(self.tokens)
+		return self.vec_bow
+
+
 		
 
 class RawRecord(object):
@@ -167,6 +198,7 @@ class RawRecord(object):
 
 		# save metadata string
 		self.m_xml_string = m_xml_string
+		
 		# convert to dictionary with xmltodict
 		self.original_metadata = xmltodict.parse(self.m_xml_string)
 
@@ -273,7 +305,7 @@ class DocSimModel(object):
 		for i,r in enumerate(reader.dpla_record_generator()):
 			self.add_record(r.m_as_char_vect_series())
 			if i % 1000 == 0:
-				print('loaded %s records' % i)
+				logging.debug('loaded %s records' % i)
 
 
 	def save_model(self, path):
@@ -311,5 +343,126 @@ class DocSimModel(object):
 
 		return scores[:20]
 
+
+
+class DocSimModelLDA(object):
+
+	'''
+	DocSim model using python Gensim LDA
+	'''
+
+	def __init__(self, reader=None, name=None):
+
+		# get reader
+		self.reader = reader
+
+		self.texts = []
+		self.article_hash = {}
+		self.failed = []
+		self.name = name
+
+
+	def get_all_docs(self, limit=1000):
+
+		count = 0
+		for r in self.reader.dpla_record_generator():
+
+			# get bow
+			r.m_as_bow()
+
+			self.texts.append(r.tokens)
+			self.article_hash[r.dpla_id] = len(self.texts) - 1
+
+			count += 1
+			if count > limit:
+				return 'limit reached'
+
+
+	def gen_corpora(self):
+
+		logging.debug("creating corpora dictionary for texts: %s.dict" % self.name)
+		
+		# creating gensim dictionary
+		self.id2word = corpora.Dictionary(self.texts)
+		self.id2word.save('%s/%s.dict' % ('models', self.name))
+
+		# creating gensim corpus
+		self.corpus = [self.id2word.doc2bow(text) for text in self.texts]
+		'''
+		Consider future options for alternate formats:
+			Other formats include Joachim’s SVMlight format, Blei’s LDA-C format and GibbsLDA++ format.
+			>>> corpora.SvmLightCorpus.serialize('/tmp/corpus.svmlight', corpus)
+			>>> corpora.BleiCorpus.serialize('/tmp/corpus.lda-c', corpus)
+			>>> corpora.LowCorpus.serialize('/tmp/corpus.low', corpus)
+		'''
+		corpora.MmCorpus.serialize('%s/%s.mm' % ('models', self.name), self.corpus)
+
+		logging.debug('finis.')
+
+
+	def load_corpora(self):
+		'''
+		see above for selecting other corpora serializations
+		this should also load dictionary
+		'''
+		# load corpora
+		target_path = '%s/%s.mm' % ('models', self.name)
+		if os.path.exists(target_path):
+			logging.debug("loading serialized corpora: %s.mm" % self.name)
+			self.corpus = corpora.MmCorpus(target_path)
+
+		# load dictionary
+		target_path = '%s/%s.dict' % ('models', self.name)
+		if os.path.exists(target_path):
+			logging.debug("loading serialized dictionary: %s.dict" % self.name)
+			self.id2word = corpora.Dictionary.load(target_path)
+
+
+	def gen_lda(self, num_topics=500, chunksize=100, passes=5):
+		'''
+		creates LDA model from mm corpora and dictionary
+		'''
+		self.lda = models.ldamulticore.LdaMulticore(
+			corpus=self.corpus,
+			id2word=self.id2word,
+			num_topics=num_topics,
+			chunksize=chunksize,
+			passes=passes
+		)
+		self.lda.save('%s/%s.lda' % ('models', self.name))
+
+
+	def load_lda(self):
+		'''
+		loads saved LDA model
+		'''
+		self.lda = models.ldamodel.LdaModel.load('%s/%s.lda' % ('models', self.name))
+
+
+	def gen_similarity_index(self):
+		self.index = gensim.similarities.MatrixSimilarity(self.lda[self.corpus])
+		self.index.save('%s/%s.simindex' % ('models', self.name))
+
+
+	def load_similarity_index(self):
+		self.index = gensim.similarities.MatrixSimilarity.load('%s/%s.simindex' % ('models', self.name))
+
+
+	def get_similar_records(self, input_record, limit=20):
+
+		'''
+		Run a couple of DPLARecord methods and query against model
+		'''
+
+		# get vectors of tokens against model
+		input_record.as_vec_bow(self.lda)
+
+		# query against model and get similarity matrix
+		vec_lda = self.lda[input_record.vec_bow]
+		input_record.sims = self.index[vec_lda]
+		input_record.sims = sorted(enumerate(input_record.sims), key=lambda item: -item[1])
+
+		# return by limit constraint
+		return input_record.sims[:limit]
 
 
