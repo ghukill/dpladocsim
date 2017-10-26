@@ -3,7 +3,7 @@
 import re
 import time
 
-from pydocsim import *
+from dpladocsim import *
 
 # DEBUG AUTO LOAD
 reader = Reader('data/michigan.json')

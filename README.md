@@ -1,11 +1,15 @@
 # dpladocsim
-Compare two JSON records from DPLA 
+Attemp fuzzy match of unseen/unprocessed record against DPLA datasets
 
-# download DPLA datasets
+## download DPLA datasets
 
 For examples to run, download [Michigan data](https://dpla-provider-export.s3.amazonaws.com/2017/10/michigan.json.gz) from DPLA and unzip to `/data` directory.
 
-# example of poor, but working model
+## Character Vector approach
+
+One approach has been to count each character in a document's metadata, `a-z0-9`, as a "fingerprint" of the document.  Then, calculate the Euclidean distance of that fingerprint against all other document fingerprints as represented in a Pandas dataframe.
+
+### example of poor, but working model
 
 ```
 from console import *
@@ -29,7 +33,7 @@ Out[9]:
  ('b6d5a70525f377a65d19060cdfa90269', 17.0)]
 ```
 
-# testing with raw MODS
+### testing with raw MODS
 
 Once you have a model created, we can shoehorn a test with a raw MODS record (make sure record is at same level of transformation as what was used to train the model).  The goal is to create a pandas Series object and pass this to the model for similarity checking.
 
@@ -110,16 +114,40 @@ Should have been:
 Best guess at 47.275:
 [1958 Packard station wagon, three-quarter front left view](https://dp.la/item/de78b3f09ab94100368e535c97c07ac7)
 
-Not quite.  Work to be done.
 
-# LDA
+
+## LDA
+
+Another approach is using GenSim and an LDA model to try and generate topics across a dataset that may be useful for finding that same record, even if slightly different.
+
+### Train a model
+
+Assuming already acquired a dataset as explained above.
 
 ```
 from pydocsim import *
-dsm = DocSimModelLDA(name='mich')
+
+# get a reader
+rr = ReaderRaw('data/michigan.json')
+
+# instantiate and train model (where each stage is automatically saved to /models/[NAME].*)
+dsm = DocSimModelLDA(reader=rr, name='michfull')
+dsm.gen_corpora()
+dsm.gen_lda()
+dsm.gen_similarity_index()
+```
+
+### Load a record and check for similarity
+```
+from pydocsim import *
+
+# if neccessary, reload dsm model
+dsm = DocSimModelLDA(name='michfull')
 dsm.load_corpora()
 dsm.load_lda()
 dsm.load_similarity_index()
+
+# get reader and document to check
 rr = ReaderRaw('data/michigan.json')
 r = rr.get_next_dpla_record()
 
@@ -146,4 +174,10 @@ Out[9]:
  (37, 0.8057099),
  (36, 0.80004919)]
 ```
+
+## Discussion
+
+Still just exploratory at this point.  Both approaches have some interesting characteristics, pros, cons, etc.
+
+Another interesting avenue might be to query against an ElasticSearch (ES) index, with the DPLA docs already indexed.  Because we won't have the metadata parsed as a DPLA doc yet, we can't query field-by-field, but we could query block of text by block of text.  Loop through extracted tokens, fire queries for each, save to dataframe, and calculate most probable document. 
 
