@@ -1,5 +1,5 @@
 
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 import ijson
 import json
 from json import JSONDecodeError
@@ -362,7 +362,7 @@ class DocSimModelLDA(object):
 		self.name = name
 
 
-	def get_all_docs(self, limit=1000):
+	def retrieve_docs(self, limit=1000):
 
 		count = 0
 		for r in self.reader.dpla_record_generator():
@@ -373,8 +373,12 @@ class DocSimModelLDA(object):
 			self.texts.append(r.tokens)
 			self.article_hash[r.dpla_id] = len(self.texts) - 1
 
+			# report every 1000
+			if count % 1000 == 0:
+				logging.debug('retrieving documents @ %s' % count)
+
 			count += 1
-			if count > limit:
+			if count >= limit:
 				return 'limit reached'
 
 
@@ -418,17 +422,33 @@ class DocSimModelLDA(object):
 			self.id2word = corpora.Dictionary.load(target_path)
 
 
-	def gen_lda(self, num_topics=500, chunksize=100, passes=5):
+	def gen_lda(self, num_topics=500, chunksize=100, passes=5, multicore=False):
+		
 		'''
 		creates LDA model from mm corpora and dictionary
 		'''
-		self.lda = models.ldamulticore.LdaMulticore(
-			corpus=self.corpus,
-			id2word=self.id2word,
-			num_topics=num_topics,
-			chunksize=chunksize,
-			passes=passes
-		)
+
+		if multicore:
+			logging.debug('multicore selected, using models.ldamulticore.LdaMulticore')
+			self.lda = models.ldamulticore.LdaMulticore(
+				corpus=self.corpus,
+				id2word=self.id2word,
+				num_topics=num_topics,
+				chunksize=chunksize,
+				passes=passes
+			)
+
+		else:
+			logging.debug('not utilizing multicore, using models.ldamodel.LdaModel')
+			self.lda = models.ldamodel.LdaModel(
+				corpus=self.corpus,
+				id2word=self.id2word,
+				num_topics=num_topics,
+				update_every=1,
+				chunksize=chunksize,
+				passes=passes
+			)
+		
 		self.lda.save('%s/%s.lda' % ('models', self.name))
 
 
@@ -448,7 +468,7 @@ class DocSimModelLDA(object):
 		self.index = gensim.similarities.MatrixSimilarity.load('%s/%s.simindex' % ('models', self.name))
 
 
-	def get_similar_records(self, input_record, limit=20):
+	def get_similar_records(self, input_record, limit=20, parse_ambiguous=True):
 
 		'''
 		Run a couple of DPLARecord methods and query against model
@@ -462,7 +482,34 @@ class DocSimModelLDA(object):
 		input_record.sims = self.index[vec_lda]
 		input_record.sims = sorted(enumerate(input_record.sims), key=lambda item: -item[1])
 
+		# run ambiguity check if 2nd result is above 98%
+		if parse_ambiguous:		
+			if input_record.sims[1][1] > 0.99:
+				logging.debug('running ambiguity check')
+				input_record.sims = self.ambiguity_check(input_record)
+
 		# return by limit constraint
 		return input_record.sims[:limit]
+
+
+	def ambiguity_check(self, input_record, iterations=25):
+
+		'''
+		run similarity test numerous times, accept most common answer
+		'''
+
+		checks = []
+		for x in range(0, iterations):
+			checks.append( self.get_similar_records(input_record, parse_ambiguous=False)[0] )
+
+		# determine most common
+		counts = [ (k, (v/100)) for k,v in Counter(elem[0] for elem in checks).items() ]
+		counts = sorted(counts, key=lambda item: -item[1])
+
+		return counts
+
+
+
+
 
 

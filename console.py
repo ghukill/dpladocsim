@@ -37,3 +37,5 @@ def benchmark_ijson_read():
 	for r in ijson_reader.dpla_record_generator():
 		count += 1
 	print("count %s, time elapsed %s" % (count, (time.time()-stime)))
+
+
