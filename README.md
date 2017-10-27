@@ -181,3 +181,37 @@ Still just exploratory at this point.  Both approaches have some interesting cha
 
 Another interesting avenue might be to query against an ElasticSearch (ES) index, with the DPLA docs already indexed.  Because we won't have the metadata parsed as a DPLA doc yet, we can't query field-by-field, but we could query block of text by block of text.  Loop through extracted tokens, fire queries for each, save to dataframe, and calculate most probable document. 
 
+## ElasticSearch
+
+Assumes indexing has taken place (also method from this dsm)
+
+```
+from dpladocsim import *
+
+# get subset of records
+rr = ReaderRaw('data/michigan.json')
+records = []
+count = 0
+for r in rr.dpla_record_generator():
+    records.append(r)
+    count += 1
+    if count >= 1000:
+        break
+
+# load model
+dsm = DocSimModelES(name='michfull')
+misses = []
+for i, record in enumerate(records):
+    top_match = dsm.get_similar_records(record)[0]
+    print(record.dpla_id, top_match)
+    if record.dpla_id != top_match[0]:
+        misses.append((i, record))
+```
+
+Accuracy, with not much tweaking, 223 misses / 1000, ~79%.
+
+
+
+
+
+

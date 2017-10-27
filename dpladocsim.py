@@ -17,6 +17,10 @@ from nltk.corpus import stopwords
 import gensim
 from gensim import corpora, models, similarities
 
+from elasticsearch import Elasticsearch
+from elasticsearch_dsl import Search, A, Q
+
+
 
 class Reader(object):
 
@@ -507,6 +511,69 @@ class DocSimModelLDA(object):
 		counts = sorted(counts, key=lambda item: -item[1])
 
 		return counts
+
+
+
+class DocSimModelES(object):
+
+	'''
+	DocSim model using ElasticSearch index
+	'''
+
+	def __init__(self, reader=None, name=None):
+
+		self.reader = reader
+		self.name = name
+		self.es_handle = Elasticsearch(hosts=['192.168.45.10'])
+
+		self.indexing_failures = []
+
+
+	def index_all_docs_to_es(self):
+
+		'''
+		use reader, index all docs
+
+		TODO: do in bulk, just testing here
+		'''
+
+		# create index
+		self.es_handle.indices.create(index=self.name, ignore=400)
+
+		# iterate through rows ()		
+		for i, r in enumerate(self.reader.dpla_record_generator()):
+
+			# clean and prepare record
+			body = r.record['_source']
+			for val in ['_id', '_rev']:
+				body.pop(val, None)
+
+			# index
+			try:
+				self.es_handle.index(index=self.name, doc_type='record', id=r.dpla_id, body=body)
+			except:
+				logging.debug('could not index %s, reader index %s' % (r.dpla_id, i))
+
+			if i % 500 == 0:
+				logging.debug('indexed %s records' % i)
+
+
+	def get_similar_records(self, input_record, limit=20):
+
+		# instantiate search
+		s = Search(using=self.es_handle, index=self.name)
+
+		# build query and execute
+		s = s.query('match', _all=' '.join(input_record.tokens))
+		res = s.execute()
+
+		# return
+		scores = [ (hit.id,hit.meta.score) for hit in res ]
+		return scores
+
+
+
+
 
 
 
