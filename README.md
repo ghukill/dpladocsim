@@ -210,6 +210,10 @@ for i, record in enumerate(records):
 
 Accuracy, with not much tweaking, 223 misses / 1000, ~79%.
 
+## Discussion 2
+
+ES model is missed 223, LDA missed 179.  *However*, they tend to miss different records.  Combined, they missed a total of 402, but only 17 of those were shared by both.  Meaning, using a combination of ES and LDA models, you've got it down to 17 / 1000, ~1.7%.  That's getting there.
+
 
 
 
