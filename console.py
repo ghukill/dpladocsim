@@ -14,14 +14,17 @@ r4 = reader.get_next_dpla_record()
 
 
 def get_new_reader():
+
 	return Reader('data/michigan.json')
 
 
 def get_new_raw_reader():
+
 	return ReaderRaw('data/michigan.json')
 
 
 def benchmark_raw_read():
+
 	raw_reader = get_new_raw_reader()
 	count = 0
 	stime = time.time()
@@ -31,6 +34,7 @@ def benchmark_raw_read():
 
 
 def benchmark_ijson_read():
+
 	ijson_reader = get_new_reader()
 	count = 0
 	stime = time.time()

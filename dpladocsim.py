@@ -10,14 +10,15 @@ from scipy.spatial.distance import pdist
 import xmltodict
 
 import logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 from nltk.corpus import stopwords
 
 import gensim
 from gensim import corpora, models, similarities
 
-from elasticsearch import Elasticsearch
+# from elasticsearch import Elasticsearch
+import elasticsearch as es
 from elasticsearch_dsl import Search, A, Q
 
 
@@ -37,10 +38,14 @@ class Reader(object):
 		return DPLARecord(next(self.records_gen))
 
 
-	def dpla_record_generator(self):
+	def dpla_record_generator(self, limit=False):
 
+		i = 0
 		while True:
+			i += 1
 			yield self.get_next_dpla_record()
+			if limit and i >= limit:
+					break
 
 
 
@@ -63,11 +68,20 @@ class ReaderRaw(object):
 		return DPLARecord(r_string)
 
 
-	def dpla_record_generator(self):
+	def dpla_record_generator(self, limit=False, attr=None):
 
+		i = 0
 		while True:
+			i += 1
 			try:
-				yield self.get_next_dpla_record()
+				# if attr provided, return attribute of record
+				if attr:
+					yield getattr(self.get_next_dpla_record(), attr)
+				# else, return whole record
+				else:
+					yield self.get_next_dpla_record()
+				if limit and i >= limit:
+					break
 			except JSONDecodeError:
 				break
 
@@ -520,16 +534,16 @@ class DocSimModelES(object):
 	DocSim model using ElasticSearch index
 	'''
 
-	def __init__(self, reader=None, name=None):
+	def __init__(self, reader=None, name=None, es_host='localhost'):
 
 		self.reader = reader
 		self.name = name
-		self.es_handle = Elasticsearch(hosts=['192.168.45.10'])
+		self.es_handle = es.Elasticsearch(hosts=[es_host])
 
 		self.indexing_failures = []
 
 
-	def index_all_docs_to_es(self):
+	def index_all_docs_to_es(self, limit=False):
 
 		'''
 		use reader, index all docs
@@ -538,10 +552,14 @@ class DocSimModelES(object):
 		'''
 
 		# create index
+		try:
+			self.es_handle.indices.delete(index=self.name, ignore=400)
+		except:
+			logging.info('could not delete index %s' % self.name)
 		self.es_handle.indices.create(index=self.name, ignore=400)
 
 		# iterate through rows ()		
-		for i, r in enumerate(self.reader.dpla_record_generator()):
+		for i, r in enumerate(self.reader.dpla_record_generator(limit=limit)):
 
 			# clean and prepare record
 			body = r.record['_source']
@@ -556,6 +574,26 @@ class DocSimModelES(object):
 
 			if i % 500 == 0:
 				logging.debug('indexed %s records' % i)
+
+
+	def bulk_index_all_docs_to_es(self, limit=False):
+
+		'''
+		use streaming bulk indexer:
+		http://elasticsearch-py.readthedocs.io/en/master/helpers.html
+		'''
+
+		def es_doc_generator(dpla_record_generator):
+
+			for r in dpla_record_generator:
+				for f in ['_id','_rev']:
+					r['_source'].pop(f)
+				yield r
+
+		# index using streaming
+		for i in es.helpers.streaming_bulk(self.es_handle, es_doc_generator(self.reader.dpla_record_generator(limit=limit, attr='record')), chunk_size=500):
+
+			logging.info(i)
 
 
 	def get_similar_records(self, input_record, limit=20):
