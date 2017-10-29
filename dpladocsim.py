@@ -528,6 +528,164 @@ class DocSimModelLDA(object):
 
 
 
+class DocSimModelLSI(object):
+
+	'''
+	DocSim model using python Gensim LDA
+	'''
+
+	def __init__(self, reader=None, name=None):
+
+		# get reader
+		self.reader = reader
+
+		self.texts = []
+		self.article_hash = {}
+		self.failed = []
+		self.name = name
+
+
+	def retrieve_docs(self, limit=1000):
+
+		count = 0
+		for r in self.reader.dpla_record_generator():
+
+			# get bow
+			r.m_as_bow()
+
+			self.texts.append(r.tokens)
+			self.article_hash[r.dpla_id] = len(self.texts) - 1
+
+			# report every 1000
+			if count % 1000 == 0:
+				logging.debug('retrieving documents @ %s' % count)
+
+			count += 1
+			if count >= limit:
+				return 'limit reached'
+
+
+	def gen_corpora(self):
+
+		logging.debug("creating corpora dictionary for texts: %s.dict" % self.name)
+		
+		# creating gensim dictionary
+		self.id2word = corpora.Dictionary(self.texts)
+		self.id2word.save('%s/%s.dict' % ('models', self.name))
+
+		# creating gensim corpus
+		self.corpus = [self.id2word.doc2bow(text) for text in self.texts]
+		'''
+		Consider future options for alternate formats:
+			Other formats include Joachim’s SVMlight format, Blei’s LDA-C format and GibbsLDA++ format.
+			>>> corpora.SvmLightCorpus.serialize('/tmp/corpus.svmlight', corpus)
+			>>> corpora.BleiCorpus.serialize('/tmp/corpus.lda-c', corpus)
+			>>> corpora.LowCorpus.serialize('/tmp/corpus.low', corpus)
+		'''
+		corpora.MmCorpus.serialize('%s/%s.mm' % ('models', self.name), self.corpus)
+
+		logging.debug('finis.')
+
+
+	def load_corpora(self):
+		'''
+		see above for selecting other corpora serializations
+		this should also load dictionary
+		'''
+		# load corpora
+		target_path = '%s/%s.mm' % ('models', self.name)
+		if os.path.exists(target_path):
+			logging.debug("loading serialized corpora: %s.mm" % self.name)
+			self.corpus = corpora.MmCorpus(target_path)
+
+		# load dictionary
+		target_path = '%s/%s.dict' % ('models', self.name)
+		if os.path.exists(target_path):
+			logging.debug("loading serialized dictionary: %s.dict" % self.name)
+			self.id2word = corpora.Dictionary.load(target_path)
+
+
+	def gen_lsi(self, num_topics=500, chunksize=100, passes=5, multicore=False):
+		
+		'''
+		creates LDA model from mm corpora and dictionary
+		'''
+		self.tfidf = models.TfidfModel(self.corpus)
+		self.corpus_tfidf = self.tfidf[self.corpus]
+		self.lsi = models.LsiModel(self.corpus_tfidf, id2word=self.id2word, num_topics=num_topics)
+		self.lsi.save('%s/%s.lsi' % ('models', self.name))
+
+
+	def load_lsi(self):
+		'''
+		loads saved LDA model
+		'''
+		self.lsi = models.LsiModel.load('%s/%s.lsi' % ('models', self.name))
+
+
+	def gen_similarity_index(self):
+		self.index = gensim.similarities.MatrixSimilarity(self.lsi[self.corpus])
+		self.index.save('%s/%s.simindex' % ('models', self.name))
+
+
+	def load_similarity_index(self):
+		self.index = gensim.similarities.MatrixSimilarity.load('%s/%s.simindex' % ('models', self.name))
+
+
+
+	def train_model(self):
+		
+		'''
+		convenience method to train all aspects of model
+		'''
+
+		self.gen_corpora()
+		self.gen_lsi()
+		self.gen_similarity_index()
+
+
+	def get_similar_records(self, input_record, limit=20, parse_ambiguous=True):
+
+		'''
+		Run a couple of DPLARecord methods and query against model
+		'''
+
+		# get vectors of tokens against model
+		input_record.as_vec_bow(self.lsi)
+
+		# query against model and get similarity matrix
+		vec_lsi = self.lsi[input_record.vec_bow]
+		input_record.sims = self.index[vec_lsi]
+		input_record.sims = sorted(enumerate(input_record.sims), key=lambda item: -item[1])
+
+		# run ambiguity check if 2nd result is above 98%
+		if parse_ambiguous:		
+			if input_record.sims[1][1] > 0.99:
+				logging.debug('running ambiguity check')
+				input_record.sims = self.ambiguity_check(input_record)
+
+		# return by limit constraint
+		return input_record.sims[:limit]
+
+
+	def ambiguity_check(self, input_record, iterations=25):
+
+		'''
+		run similarity test numerous times, accept most common answer
+		'''
+
+		checks = []
+		for x in range(0, iterations):
+			checks.append( self.get_similar_records(input_record, parse_ambiguous=False)[0] )
+
+		# determine most common
+		counts = [ (k, (v/100)) for k,v in Counter(elem[0] for elem in checks).items() ]
+		counts = sorted(counts, key=lambda item: -item[1])
+
+		return counts
+
+
+
 class DocSimModelES(object):
 
 	'''
