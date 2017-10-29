@@ -214,7 +214,43 @@ Accuracy, with not much tweaking, 223 misses / 1000, ~79%.
 
 ES model is missed 223, LDA missed 179.  *However*, they tend to miss different records.  Combined, they missed a total of 402, but only 17 of those were shared by both.  Meaning, using a combination of ES and LDA models, you've got it down to 17 / 1000, ~1.7%.  That's getting there.
 
+## Word Vectors
 
+Exploratory, not yet implemented in a class, also a bit slow, but looking to be *very* accurate so far, even with random modifications to underlying document tokens, and no weights of any kind:
+
+```
+def check_sims(doc):   
+	# set score to zero                                     
+	scores = []
+
+	# get doc to check as vect dict once
+	doc_vec = dsm.id2word.doc2bow(doc.tokens)
+
+	# loop through docs in corpus
+	for i,corpus_doc in enumerate(dsm.corpus):
+
+		# get vectors as dictionary
+		corpus_doc_vec_dict = { id:count for id,count in corpus_doc }
+
+		# set score for this doc at zero
+		score = 0
+
+		# loop through word vectors and tally score
+		for vec in doc_vec:
+			if vec[0] in corpus_doc_vec_dict.keys():
+				'''
+				scoring is the absolute difference between doc's token vector, and the corpus doc's vector, substracted
+				from the doc's token vector
+					- think is if identical counts, none taken away from score, but if differ, score suffers
+				'''
+				score += vec[1] - abs(vec[1]-corpus_doc_vec_dict[vec[0]])
+
+		scores.append((i, score))
+
+	# return
+	scores.sort(key=lambda tup: -tup[1])
+	return scores
+```
 
 
 

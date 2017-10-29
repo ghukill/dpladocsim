@@ -486,7 +486,7 @@ class DocSimModelLDA(object):
 		self.index = gensim.similarities.MatrixSimilarity.load('%s/%s.simindex' % ('models', self.name))
 
 
-	def get_similar_records(self, input_record, limit=20, parse_ambiguous=True):
+	def get_similar_records(self, input_record, limit=20, check_ambiguous=True):
 
 		'''
 		Run a couple of DPLARecord methods and query against model
@@ -501,7 +501,7 @@ class DocSimModelLDA(object):
 		input_record.sims = sorted(enumerate(input_record.sims), key=lambda item: -item[1])
 
 		# run ambiguity check if 2nd result is above 98%
-		if parse_ambiguous:		
+		if check_ambiguous:		
 			if input_record.sims[1][1] > 0.99:
 				logging.debug('running ambiguity check')
 				input_record.sims = self.ambiguity_check(input_record)
@@ -561,7 +561,7 @@ class DocSimModelLSI(object):
 				logging.debug('retrieving documents @ %s' % count)
 
 			count += 1
-			if count >= limit:
+			if limit and count >= limit:
 				return 'limit reached'
 
 
@@ -605,14 +605,19 @@ class DocSimModelLSI(object):
 			self.id2word = corpora.Dictionary.load(target_path)
 
 
-	def gen_lsi(self, num_topics=500, chunksize=100, passes=5, multicore=False):
+	def gen_lsi(self, num_topics=500, chunksize=20000):
 		
 		'''
 		creates LDA model from mm corpora and dictionary
 		'''
 		self.tfidf = models.TfidfModel(self.corpus)
 		self.corpus_tfidf = self.tfidf[self.corpus]
-		self.lsi = models.LsiModel(self.corpus_tfidf, id2word=self.id2word, num_topics=num_topics)
+		self.lsi = models.LsiModel(
+			self.corpus_tfidf,
+			id2word=self.id2word,
+			num_topics=num_topics,
+			chunksize=chunksize
+		)
 		self.lsi.save('%s/%s.lsi' % ('models', self.name))
 
 
@@ -644,7 +649,7 @@ class DocSimModelLSI(object):
 		self.gen_similarity_index()
 
 
-	def get_similar_records(self, input_record, limit=20, parse_ambiguous=True):
+	def get_similar_records(self, input_record, limit=20, check_ambiguous=True):
 
 		'''
 		Run a couple of DPLARecord methods and query against model
@@ -659,7 +664,7 @@ class DocSimModelLSI(object):
 		input_record.sims = sorted(enumerate(input_record.sims), key=lambda item: -item[1])
 
 		# run ambiguity check if 2nd result is above 98%
-		if parse_ambiguous:		
+		if check_ambiguous:		
 			if input_record.sims[1][1] > 0.99:
 				logging.debug('running ambiguity check')
 				input_record.sims = self.ambiguity_check(input_record)
@@ -676,7 +681,7 @@ class DocSimModelLSI(object):
 
 		checks = []
 		for x in range(0, iterations):
-			checks.append( self.get_similar_records(input_record, parse_ambiguous=False)[0] )
+			checks.append( self.get_similar_records(input_record, check_ambiguous=False)[0] )
 
 		# determine most common
 		counts = [ (k, (v/100)) for k,v in Counter(elem[0] for elem in checks).items() ]
